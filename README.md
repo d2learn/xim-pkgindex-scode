@@ -1,23 +1,19 @@
-# xim-pkgindex-template
+# xim-pkgindex-scode
 
-xim package-index - template repository
+xim package index for source code
 
 ## 添加索引仓库
 
 > 添加索引仓库到xim的索引仓库管理器中
 
 ```bash
-xim --add-indexrepo namespace:https://github.com/d2learn/xim-pkgindex-template.git
+xim --add-indexrepo scode:https://github.com/d2learn/xim-pkgindex-scode.git
 ```
 
 ## 使用仓库中的包
 
 ```bash
-xlings install namespace:pkgname
-```
-或
-```bash
-xim -i namespace:pkgname
+xlings install scode:linux
 ```
 
 ## 其他
