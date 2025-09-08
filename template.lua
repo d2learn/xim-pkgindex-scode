@@ -3,7 +3,7 @@
 -- package = { ... }
 
 package.type = "package"
-package.namespace = "socde"
+package.namespace = "scode"
 
 import("xim.libxpkg.pkginfo")
 import("xim.libxpkg.xvm")
