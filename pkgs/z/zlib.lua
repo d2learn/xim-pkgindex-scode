@@ -7,7 +7,6 @@ package = {
 
     authors = "Jean-loup Gailly, Mark Adler",
     licenses = "https://zlib.net/zlib_license.html",
-    repo = "https://github.com/torvalds/linux",
 
     -- xim pkg info
     type = "package",
