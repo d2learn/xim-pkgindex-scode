@@ -1,7 +1,7 @@
 package = {
     homepage = "https://tiswww.case.edu/php/chet/readline/rltop.html",
 
-    name = "libreadline",
+    name = "readline",
     description = "GNU Readline Library for command-line editing and history",
 
     authors = "Chet Ramey",
