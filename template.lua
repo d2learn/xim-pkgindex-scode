@@ -10,7 +10,10 @@ import("xim.libxpkg.xvm")
 import("xim.libxpkg.log")
 
 function installed()
-    return xvm.has("scode-" .. package.name)
+    local old_value = xvm.log_tag(false)
+    local ret = xvm.has("scode-" .. package.name)
+    xvm.log_tag(old_value)
+    return ret
 end
 
 function install()
