@@ -5,7 +5,7 @@ package = {
 
     authors = "sunrisepeak",
     license = "Apache-2.0",
-    repo = "https://github.com/d2learn/xim-pkgindex-scode",
+    repo = "https://github.com/openxlings/xim-pkgindex-scode",
 
     -- xim pkg info
     type = "auto-config",
