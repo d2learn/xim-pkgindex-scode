@@ -24,66 +24,100 @@ local projectdir = os.scriptdir()
 local pkgsdir = path.join(projectdir, "pkgs")
 local template = path.join(projectdir, "template.lua")
 
+-- This script executes under TWO different Lua runtimes:
+--   1. xmake's sandbox (legacy xlings): cprint/cprintf/try/catch/raise/
+--      os.getwinsize/path.relative are available, pcall/error are NOT.
+--   2. libxpkg's plain-Lua build sandbox (xlings >= 0.4.52 artifact path,
+--      run_pkgindex_build in xpkg-loader.cppm): full Lua stdlib (pcall/
+--      error/io.write/io.flush) plus a cprint stub, but NONE of the
+--      xmake-only helpers above. An error here is swallowed by the caller
+--      and the built index silently loses its xpm sections — so every
+--      non-shared primitive below is feature-detected, and CI runs
+--      tests/libxpkg_sandbox_harness.lua to keep runtime 2 working.
+local NS = "scode"
+
+-- console width (fallback 80) so the single self-refreshing line never wraps
+local function term_width()
+    local w = tonumber(os.getenv("COLUMNS") or "")
+    if (not w) and type(os.getwinsize) == "function" then
+        local sz = os.getwinsize()
+        -- os.getwinsize reports a 32767 sentinel when there is no tty
+        if type(sz) == "table" and sz.width and sz.width > 0 and sz.width < 1000 then
+            w = sz.width
+        end
+    end
+    if not w or w < 20 or w > 1000 then w = 80 end
+    return w
+end
+
+-- one self-refreshing progress line (\r + clear-to-eol), file name
+-- left-truncated so the whole line stays within the console width
+local function progress(cnt, total, name, color)
+    local prefix = string.format("[%d/%d] ", cnt, total)
+    local label = NS .. "::"
+    local budget = term_width() - #prefix - #label - 1
+    if budget > 4 and #name > budget then
+        name = ".." .. name:sub(#name - budget + 3)
+    end
+    if type(cprintf) == "function" then
+        cprintf("\r[${%s}%d/%d${clear}] %s%s\027[K", color, cnt, total, label, name)
+    elseif io and type(io.write) == "function" then
+        io.write("\r" .. prefix .. label .. name .. "\027[K")
+        if type(io.flush) == "function" then io.flush() end
+    else
+        print(prefix .. label .. name)
+    end
+end
+
+local function fail_build(name, err)
+    print("")  -- terminate the in-place progress line before reporting
+    local msg = string.format("[pkgindex-build] failed at %s: %s", name, tostring(err))
+    if type(cprint) == "function" then
+        cprint("${red}" .. msg .. "${clear}")
+    else
+        print(msg)
+    end
+    if type(raise) == "function" then raise(msg) else error(msg) end
+end
+
+local function append_template(file, content)
+    io.writefile(file, io.readfile(file) .. content)
+end
+
 function installed()
     return false
 end
 
--- console width (fallback 80) so the single self-refreshing line never wraps
-local function term_width()
-    local w = tonumber(os.getenv("COLUMNS"))
-    if w and w > 0 and w < 1000 then return w end
-    -- os.getwinsize returns a 32767 sentinel when there is no tty; guard it.
-    if type(os.getwinsize) == "function" then
-        local sz = os.getwinsize()
-        if type(sz) == "table" and sz.width and sz.width > 0 and sz.width < 1000 then
-            return sz.width
-        end
-    end
-    return 80
-end
-
 function install()
-
-    -- git clean -fdx and discard all changes
+    -- Reset build outputs from a previous run. Only does real work under
+    -- xmake; both calls are registered no-ops in the libxpkg sandbox, where
+    -- the C++ caller performs the git reset itself.
     os.cd(pkgsdir)
     os.execv("git", {"clean", "-fdx"})
     os.execv("git", {"checkout", "."})
 
     local files = os.files(path.join(pkgsdir, "**.lua"))
     local template_content = io.readfile(template)
-    local all_index_cnt = #files
-    local built_index_cnt = 0
-    local width = term_width()
-    -- single self-refreshing line: only one line, print the package file,
-    -- unless it errors (then break to a red line and abort the build)
-    for _, file in ipairs(files) do
-        built_index_cnt = built_index_cnt + 1
-        if not file:endswith("pkgindex-update.lua") then
-            local name = path.relative(file, pkgsdir)
+    local total = #files
+    for i, file in ipairs(files) do
+        local name = path.filename(file)
+        if file:endswith("pkgindex-update.lua") then
+            progress(i, total, name .. " (skip)", "yellow")
+        else
             local ok, err = true, nil
-            try {
-                function()
-                    -- append template content to the end of the file
-                    io.writefile(file, io.readfile(file) .. template_content)
-                end,
-                catch { function(errors) ok = false; err = errors end }
-            }
-            if ok then
-                -- keep the line within the console width (\r stays single-line)
-                local prefix = string.format("[%d/%d] scode::", built_index_cnt, all_index_cnt)
-                local budget = width - #prefix - 1
-                if budget < 8 then budget = 8 end
-                if #name > budget then name = ".." .. name:sub(#name - budget + 3) end
-                cprintf("\r[${green}%d/%d${clear}] scode::%s\x1b[K", built_index_cnt, all_index_cnt, name)
-                io.flush()
+            if type(pcall) == "function" then
+                ok, err = pcall(append_template, file, template_content)
             else
-                print("")  -- break the progress line before reporting the error
-                cprint("[${red}%d/%d${clear}] scode::%s ERROR: %s", built_index_cnt, all_index_cnt, name, tostring(err))
-                raise("pkgindex-build failed at " .. name)
+                try {
+                    function() append_template(file, template_content) end,
+                    catch { function(e) ok = false; err = e end }
+                }
             end
+            if not ok then fail_build(name, err) end
+            progress(i, total, name, "green")
         end
     end
-    print("")  -- finalize: keep the last progress line, newline for later logs
+    if total > 0 then print("") end  -- move off the progress line
     return true
 end
 
