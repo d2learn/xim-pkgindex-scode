@@ -1,0 +1,26 @@
+# Regression gate for pkgindex-build.lua runtime compatibility.
+#
+# xlings >= 0.4.52 runs pkgindex-build.lua in libxpkg's MINIMAL plain-Lua
+# sandbox (not xmake). An xmake-only construct (cprintf/try/raise/...) makes
+# install() die silently there, the built index loses its xpm sections, and
+# `xlings install <ns>:<pkg>` breaks for every user on the artifact path.
+# tests/libxpkg_sandbox_harness.lua replicates that sandbox and asserts the
+# template actually gets appended.
+name: build-sanity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  libxpkg-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua 5.4
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+
+      - name: Run pkgindex-build.lua under the libxpkg plain-Lua sandbox
+        run: lua5.4 tests/libxpkg_sandbox_harness.lua .
